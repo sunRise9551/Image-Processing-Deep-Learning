@@ -5,7 +5,7 @@ class AlexNet(nn.Module):
     def __init__(self, num_classes=1000, init_weights=False):
         super(AlexNet, self).__init__()
         self.features = nn.Sequential(
-            nn.Conv2d(3, 96, 11, 4, (1, 2)),
+            nn.Conv2d(3, 96, 11, 4, 2),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(3, 2, 0),
             nn.Conv2d(96, 256, 5, 1, (2, 2)),
@@ -35,6 +35,7 @@ class AlexNet(nn.Module):
 
     def forward(self, x):
         x = self.features(x)
+        print(x.shape)
         x = torch.flatten(x, start_dim=1)
         x = self.classifier(x)
         return x
