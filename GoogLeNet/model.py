@@ -2,15 +2,18 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 
+
 class GoogLeNet(nn.Module):
-    def __int__(self, num_classes=1000, aux_logits=True, init_weights=False):
-        super(GoogLeNet, self).__int__()
+    def __init__(self, num_classes=1000, aux_logits=True, init_weights=False):
+        super(GoogLeNet, self).__init__()
         self.aux_logits = aux_logits
+        self.init_weights = init_weights
 
         self.conv1 = BasicConv2d(3, 64, kernel_size=7, stride=2, padding=3)
         self.maxPool1 = nn.MaxPool2d(kernel_size=3, stride=2, ceil_mode=True)   # ceiling 天花板
-        self.conv2 = BasicConv2d(64, 64, kernel_size=1, stride=2)
-        self.conv3 = BasicConv2d(64, 192, kernel_size=3, stride=1, padding=1)
+
+        self.conv2 = BasicConv2d(64, 64, kernel_size=1)
+        self.conv3 = BasicConv2d(64, 192, kernel_size=3, padding=1)
         self.maxPool2 = nn.MaxPool2d(3, 2, ceil_mode=True)
 
         self.inception3a = Inception(192, 64, 96, 128, 16, 32, 32)
@@ -20,22 +23,22 @@ class GoogLeNet(nn.Module):
         self.inception4a = Inception(480, 192, 96, 208, 16, 48, 64)
         self.inception4b = Inception(512, 160, 112, 224, 24, 64, 64)
         self.inception4c = Inception(512, 128, 128, 256, 24, 64, 64)
-        self.inception4d = Inception(512, 112, 144, 288, 32, 128, 128)
+        self.inception4d = Inception(512, 112, 144, 288, 32, 64, 64)
         self.inception4e = Inception(528, 256, 160, 320, 32, 128, 128)
         self.maxPool4 = nn.MaxPool2d(3, 2, ceil_mode=True)
 
         self.inception5a = Inception(832, 256, 160, 320, 32, 128, 128)
         self.inception5b = Inception(832, 384, 192, 384, 48, 128, 128)
 
-        self.averagePool = nn.AvgPool2d(7, 1)
-        self.averageAdaptivePool = nn.AdaptiveMaxPool2d((1, 1))
+        # self.averagePool = nn.AvgPool2d(7, 1)
+        self.averageAdaptivePool = nn.AdaptiveAvgPool2d((1, 1))
         self.dropout = nn.Dropout(p=0.7, inplace=True)
-        self.fc = nn.Linear(1 * 1 * 1024, num_classes)
+        self.fc = nn.Linear(1024, num_classes)
 
-        if init_weights:
+        if self.init_weights:
             self._initialize_weights()
 
-        if aux_logits:
+        if self.aux_logits:
             self.aux1 = InceptionAux(512, num_classes)
             self.aux2 = InceptionAux(512, num_classes)
 
@@ -65,7 +68,7 @@ class GoogLeNet(nn.Module):
         x = self.inception5a(x)     # output [B, 832, 7, 7]
         x = self.inception5b(x)     # output [B, 1024, 7, 7]
 
-        x = self.averageAdaptivePool(x)     # output [B, 1024, 1, 1]
+        # x = self.averageAdaptivePool(x)     # output [B, 1024, 1, 1]
         x = torch.flatten(x, start_dim=1)   # output [B, 1024]
         x = self.dropout(x)         # output [B, 1024]
         x = self.fc(x)              # output [B, num_classes]
@@ -73,6 +76,16 @@ class GoogLeNet(nn.Module):
         if self.training and self.aux_logits:
             return x, aux2, aux1
         return x
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, 0, 0.01)
+                nn.init.constant_(m.bias, 0)
 
 
 
@@ -84,12 +97,12 @@ class Inception(nn.Module):
 
         self.branch2 = nn.Sequential(
             BasicConv2d(in_channels, ch3x3red, kernel_size=1),
-            BasicConv2d(ch3x3red, ch3x3, kernel_size=1, padding=1)
+            BasicConv2d(ch3x3red, ch3x3, kernel_size=3, padding=1)
         )
 
         self.branch3 = nn.Sequential(
             BasicConv2d(in_channels, ch5x5red, kernel_size=1),
-            BasicConv2d(ch5x5red, ch5x5, kernel_size=1, padding=2)
+            BasicConv2d(ch5x5red, ch5x5, kernel_size=5, padding=2)
         )
 
         self.branch4 = nn.Sequential(
@@ -109,7 +122,7 @@ class Inception(nn.Module):
 
 class InceptionAux(nn.Module):
     def __init__(self, in_channels, num_classes):
-        super(InceptionAux).__init__()
+        super(InceptionAux, self).__init__()
 
         self.averagePool = nn.AvgPool2d(kernel_size=5, stride=3)
         self.conv = BasicConv2d(in_channels=in_channels, out_channels=128, kernel_size=1)   #output[BATCH, 128, 4, 4]
@@ -137,3 +150,4 @@ class BasicConv2d(nn.Module):
         x = self.conv(x)
         x = self.relu(x)
         return x
+
